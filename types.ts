@@ -1,6 +1,6 @@
 
 export interface PromptItem {
-  id: string;
+  id: string | number;
   title: string;
   category: string;
   json: string;

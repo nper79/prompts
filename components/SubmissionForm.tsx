@@ -1,7 +1,8 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { PromptItem } from '../types';
 import { CATEGORIES } from '../constants';
+import { supabase } from '../supabaseClient';
 
 interface SubmissionFormProps {
   initialData?: Partial<PromptItem>;
@@ -20,75 +21,163 @@ const SubmissionForm: React.FC<SubmissionFormProps> = ({ initialData, onSubmit, 
   });
 
   const [isProcessing, setIsProcessing] = useState(false);
+  const [bucketStatus, setBucketStatus] = useState<'checking' | 'ok' | 'error'>('checking');
+  const [bucketErrorMsg, setBucketErrorMsg] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const resizeImage = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = (event) => {
-        const img = new Image();
-        img.src = event.target?.result as string;
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
-          const MAX_SIZE = 1024;
-          
-          if (width > height) {
-            if (width > MAX_SIZE) {
-              height *= MAX_SIZE / width;
-              width = MAX_SIZE;
-            }
+  // Verificar conexão com o Bucket ao montar o componente
+  useEffect(() => {
+    const checkBucketConnection = async () => {
+      if (!supabase) {
+        setBucketStatus('error');
+        setBucketErrorMsg('Cliente Supabase não inicializado.');
+        return;
+      }
+
+      try {
+        // Tenta listar ficheiros para ver se temos acesso (mesmo que esteja vazio, não deve dar erro)
+        const { error } = await supabase.storage.from('prompts_images').list('', { limit: 1 });
+        
+        if (error) {
+          console.error("Erro de conexão ao bucket:", error);
+          setBucketStatus('error');
+          if (error.message.includes('row-level security')) {
+            setBucketErrorMsg('Erro de Permissões (Policies). O bucket existe mas não tens acesso público.');
+          } else if (error.message.includes('bucket not found') || error.statusCode === '404') {
+             setBucketErrorMsg("Bucket 'prompts_images' não encontrado no Supabase.");
           } else {
-            if (height > MAX_SIZE) {
-              width *= MAX_SIZE / height;
-              height = MAX_SIZE;
-            }
+            setBucketErrorMsg(`Erro no Storage: ${error.message}`);
           }
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx?.drawImage(img, 0, 0, width, height);
-          const dataUrl = canvas.toDataURL('image/jpeg', 0.75);
-          resolve(dataUrl);
-        };
-        img.onerror = (error) => reject(error);
-      };
-      reader.onerror = (error) => reject(error);
-    });
+        } else {
+          console.log("Conexão ao bucket 'prompts_images' estabelecida com sucesso.");
+          setBucketStatus('ok');
+        }
+      } catch (err: any) {
+        setBucketStatus('error');
+        setBucketErrorMsg(err.message);
+      }
+    };
+
+    checkBucketConnection();
+  }, []);
+
+  const dataURLtoBlob = (dataurl: string) => {
+    try {
+      const arr = dataurl.split(',');
+      const mime = arr[0].match(/:(.*?);/)?.[1];
+      const bstr = atob(arr[1]);
+      let n = bstr.length;
+      const u8arr = new Uint8Array(n);
+      while (n--) {
+        u8arr[n] = bstr.charCodeAt(n);
+      }
+      return new Blob([u8arr], { type: mime });
+    } catch (e) {
+      console.error("Erro na conversão para Blob:", e);
+      return null;
+    }
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       setIsProcessing(true);
-      try {
-        const resizedImage = await resizeImage(file);
-        setFormData(prev => ({ ...prev, imageUrl: resizedImage }));
-      } catch (error) {
-        console.error("Error processing image", error);
-        alert("Failed to process image.");
-      } finally {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setFormData(prev => ({ ...prev, imageUrl: event.target?.result as string }));
         setIsProcessing(false);
-        if (fileInputRef.current) fileInputRef.current.value = '';
-      }
+      };
+      reader.readAsDataURL(file);
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.imageUrl) { alert('Please upload an image.'); return; }
-    if (!formData.title.trim() || !formData.author.trim()) { alert('Title and Author are required.'); return; }
-    try { JSON.parse(formData.json); } catch (err) { alert('Invalid JSON.'); return; }
-    onSubmit(formData);
+    
+    if (!formData.imageUrl) { 
+      alert('Por favor, adiciona uma imagem antes de submeter.'); 
+      return; 
+    }
+
+    if (bucketStatus === 'error' && supabase) {
+      alert(`Atenção: ${bucketErrorMsg}. O upload vai falhar.`);
+      return;
+    }
+    
+    setIsProcessing(true);
+    console.log("Iniciando processo de submissão...");
+
+    let finalImageUrl = formData.imageUrl;
+
+    // Se tivermos Supabase e a imagem for um DataURL (gerada agora ou carregada localmente)
+    if (supabase && formData.imageUrl.startsWith('data:')) {
+      try {
+        console.log("Detectado Supabase. A tentar upload para o Storage...");
+        
+        const fileName = `prompt-${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
+        const blob = dataURLtoBlob(formData.imageUrl);
+
+        if (!blob) throw new Error("Falha ao preparar o ficheiro da imagem.");
+
+        // Upload para o Bucket
+        const { data, error: uploadError } = await supabase.storage
+          .from('prompts_images')
+          .upload(fileName, blob, {
+            contentType: 'image/jpeg',
+            cacheControl: '3600',
+            upsert: false
+          });
+
+        if (uploadError) {
+          console.error("Erro detalhado do Supabase Storage:", uploadError);
+          throw new Error(`Erro no Storage: ${uploadError.message}`);
+        }
+
+        console.log("Upload bem sucedido!", data);
+
+        // Obter URL Público
+        const { data: { publicUrl } } = supabase.storage
+          .from('prompts_images')
+          .getPublicUrl(fileName);
+        
+        console.log("URL Público gerado:", publicUrl);
+        finalImageUrl = publicUrl;
+      } catch (err: any) {
+        alert(err.message || "Erro desconhecido ao enviar imagem.");
+        setIsProcessing(false);
+        return;
+      }
+    } else if (!supabase) {
+      console.warn("Supabase não configurado. A usar modo Local (Base64).");
+    }
+
+    // Enviar dados finais (com o link do bucket) para a base de dados
+    onSubmit({ ...formData, imageUrl: finalImageUrl });
+    setIsProcessing(false);
   };
 
   return (
     <div className="max-w-4xl mx-auto px-6 py-12">
       <div className="flex items-center justify-between mb-8 border-b border-slate-100 pb-6">
-        <h2 className="text-3xl font-bold text-slate-900">Publish Prompt</h2>
-        <button onClick={onCancel} className="text-slate-500 hover:text-slate-900 font-medium">Cancel</button>
+        <div>
+          <h2 className="text-3xl font-bold text-slate-900">Finalizar Publicação</h2>
+          {supabase && (
+            <div className="flex items-center gap-2 mt-2">
+              <span className={`w-2.5 h-2.5 rounded-full ${
+                bucketStatus === 'checking' ? 'bg-yellow-400 animate-pulse' :
+                bucketStatus === 'ok' ? 'bg-emerald-500' : 'bg-red-500'
+              }`}></span>
+              <span className={`text-xs font-bold ${
+                bucketStatus === 'error' ? 'text-red-600' : 'text-slate-500'
+              }`}>
+                {bucketStatus === 'checking' ? 'A verificar Storage...' : 
+                 bucketStatus === 'ok' ? 'Storage Conectado: prompts_images' : 
+                 bucketErrorMsg}
+              </span>
+            </div>
+          )}
+        </div>
+        <button onClick={onCancel} className="text-slate-500 hover:text-slate-900 font-medium">Cancelar</button>
       </div>
 
       <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-12">
@@ -96,102 +185,55 @@ const SubmissionForm: React.FC<SubmissionFormProps> = ({ initialData, onSubmit, 
           <div 
             onClick={() => !isProcessing && fileInputRef.current?.click()}
             className={`aspect-square rounded-3xl border-2 border-dashed transition-all cursor-pointer overflow-hidden flex flex-col items-center justify-center gap-4 relative group ${
-              formData.imageUrl ? 'border-slate-300 bg-slate-50' : 'border-slate-200 bg-slate-50 hover:bg-slate-100 hover:border-slate-400'
+              formData.imageUrl ? 'border-slate-300 bg-slate-50' : 'border-slate-200 bg-slate-50'
             }`}
           >
             {formData.imageUrl ? (
-              <>
-                <img src={formData.imageUrl} className="w-full h-full object-contain p-4" alt="Preview" />
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity rounded-3xl">
-                   <p className="text-white font-bold bg-white/20 backdrop-blur-md border border-white/30 px-6 py-2 rounded-full shadow-lg"><i className="fa-solid fa-pen mr-2"></i>Change</p>
-                </div>
-              </>
+              <img src={formData.imageUrl} className="w-full h-full object-contain p-4" alt="Preview" />
             ) : (
-              <div className="text-center p-6">
-                <i className={`fa-solid ${isProcessing ? 'fa-spinner fa-spin text-slate-600' : 'fa-cloud-arrow-up text-slate-400'} text-4xl mb-4 transition-colors`}></i>
-                <p className="font-bold text-slate-700">{isProcessing ? 'Optimizing...' : 'Upload Image'}</p>
-                <p className="text-xs text-slate-400 mt-2">JPEG, PNG</p>
+              <div className="text-center p-6 text-slate-400">
+                <i className="fa-solid fa-image text-4xl mb-2"></i>
+                <p className="text-sm font-bold">Clica para carregar</p>
               </div>
             )}
-            <input 
-              type="file" 
-              ref={fileInputRef} 
-              className="hidden" 
-              accept="image/*" 
-              onChange={handleFileChange}
-              disabled={isProcessing}
-            />
+            <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
           </div>
 
           <div className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-widest">Title</label>
-              <input 
-                type="text" 
-                required
-                value={formData.title}
-                onChange={e => setFormData(prev => ({ ...prev, title: e.target.value }))}
-                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-slate-500/20 focus:border-slate-500 text-slate-900 transition-all shadow-sm"
-                placeholder="e.g. Neon Void Traveler"
-              />
-            </div>
-            <div>
-               <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-widest">Category</label>
-               <select 
-                 value={formData.category}
-                 onChange={e => setFormData(prev => ({ ...prev, category: e.target.value }))}
-                 className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-slate-500/20 focus:border-slate-500 text-slate-900 shadow-sm"
-               >
-                 {CATEGORIES.filter(c => c !== 'All').map(c => <option key={c} value={c}>{c}</option>)}
-               </select>
-            </div>
+            <input 
+              type="text" placeholder="Título da Obra" required
+              value={formData.title} onChange={e => setFormData(p => ({...p, title: e.target.value}))}
+              className="w-full border border-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-slate-500/20 outline-none shadow-sm"
+            />
+            <select 
+              value={formData.category} onChange={e => setFormData(p => ({...p, category: e.target.value}))}
+              className="w-full border border-slate-200 rounded-xl px-4 py-3 shadow-sm bg-white"
+            >
+              {CATEGORIES.filter(c => c !== 'All').map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
           </div>
         </div>
 
-        <div className="space-y-6 flex flex-col">
-          <div className="flex-grow flex flex-col">
-            <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-widest">JSON Content</label>
-            <div className="flex-grow bg-white border border-slate-200 rounded-xl overflow-hidden min-h-[300px] shadow-sm focus-within:ring-2 focus-within:ring-slate-500/20 focus-within:border-slate-500 transition-all">
-              <textarea
-                required
-                value={formData.json}
-                onChange={e => setFormData(prev => ({ ...prev, json: e.target.value }))}
-                className="w-full h-full p-4 bg-transparent code-font text-slate-700 focus:outline-none resize-none"
-                spellCheck={false}
-              />
-            </div>
+        <div className="space-y-6">
+          <div className="h-[300px] border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+             <textarea
+               required value={formData.json} onChange={e => setFormData(p => ({...p, json: e.target.value}))}
+               className="w-full h-full p-4 code-font text-sm bg-slate-50/50 outline-none resize-none"
+               placeholder='{"prompt": "..."}'
+             />
+          </div>
+          
+          <div className="grid grid-cols-2 gap-4">
+             <input type="text" placeholder="Teu Nome" required value={formData.author} onChange={e => setFormData(p => ({...p, author: e.target.value}))} className="border border-slate-200 rounded-xl px-4 py-3 outline-none shadow-sm" />
+             <input type="url" placeholder="Link (X, Portfolio)" value={formData.authorUrl} onChange={e => setFormData(p => ({...p, authorUrl: e.target.value}))} className="border border-slate-200 rounded-xl px-4 py-3 outline-none shadow-sm" />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-widest">Author</label>
-                <input 
-                  type="text" 
-                  required
-                  value={formData.author}
-                  onChange={e => setFormData(prev => ({ ...prev, author: e.target.value }))}
-                  className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-slate-500/20 focus:border-slate-500 text-slate-900 transition-all shadow-sm"
-                  placeholder="Your Name"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-widest">Social Link</label>
-                <input 
-                  type="url" 
-                  value={formData.authorUrl}
-                  onChange={e => setFormData(prev => ({ ...prev, authorUrl: e.target.value }))}
-                  className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-slate-500/20 focus:border-slate-500 text-slate-900 transition-all shadow-sm"
-                  placeholder="https://x.com/..."
-                />
-              </div>
-            </div>
-
           <button 
-            type="submit"
-            disabled={isProcessing}
-            className={`w-full bg-brand-gradient text-white py-4 rounded-full font-bold text-lg hover:shadow-xl hover:shadow-slate-500/25 transition-all active:scale-[0.99] ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
+            type="submit" 
+            disabled={isProcessing || (!!supabase && bucketStatus === 'error')}
+            className={`w-full bg-brand-gradient text-white py-4 rounded-full font-bold text-lg hover:shadow-xl transition-all ${isProcessing || (!!supabase && bucketStatus === 'error') ? 'opacity-50 grayscale cursor-not-allowed' : 'active:scale-95'}`}
           >
-            {isProcessing ? 'Processing Image...' : 'Submit to Directory'}
+            {isProcessing ? 'A Enviar para a Cloud...' : 'Submeter para o Diretório'}
           </button>
         </div>
       </form>
