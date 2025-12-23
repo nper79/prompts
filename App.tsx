@@ -151,7 +151,7 @@ const App: React.FC = () => {
   };
 
   const resetStorage = () => {
-    if (confirm("Desejas recarregar os dados da base de dados?")) {
+    if (confirm("Do you want to reload data from the database?")) {
       window.location.reload();
     }
   };
@@ -162,7 +162,7 @@ const App: React.FC = () => {
         <div className="fixed top-24 right-6 z-[100] animate-fade-in">
           <div className="bg-emerald-600 text-white px-6 py-4 rounded-xl shadow-xl flex items-center gap-3">
             <i className="fa-solid fa-check-circle text-xl"></i>
-            <div><p className="font-bold">Publicado com sucesso!</p></div>
+            <div><p className="font-bold">Published successfully!</p></div>
           </div>
         </div>
       )}
@@ -176,17 +176,9 @@ const App: React.FC = () => {
             <h1 className="text-xl font-bold tracking-tight text-slate-900">JSONPrompts</h1>
           </div>
 
-          <div className="hidden md:flex items-center gap-1 bg-slate-100/80 rounded-full px-1 py-1 border border-slate-200/50">
-             <button onClick={() => { setView(ViewMode.EXPLORE); setSelectedPrompt(null); }} className={`px-6 py-2 rounded-full text-sm font-semibold transition-all ${view === ViewMode.EXPLORE ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}>Explorar</button>
-             <button onClick={() => { setView(ViewMode.CREATE); setSelectedPrompt(null); }} className={`px-6 py-2 rounded-full text-sm font-semibold transition-all ${view === ViewMode.CREATE ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}>Criar</button>
-          </div>
-
           <div className="flex items-center gap-4">
-             <button onClick={() => { setView(ViewMode.SUBMIT); setSelectedPrompt(null); }} className="hidden sm:block bg-brand-gradient text-white px-6 py-2.5 rounded-full font-bold text-sm shadow-lg hover:scale-105 transition-all">Publicar</button>
+             <button onClick={() => { setView(ViewMode.SUBMIT); setSelectedPrompt(null); }} className="hidden sm:block bg-brand-gradient text-white px-6 py-2.5 rounded-full font-bold text-sm shadow-lg hover:scale-105 transition-all">Submit</button>
              <button onClick={resetStorage} className="w-10 h-10 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors"><i className="fa-solid fa-arrows-rotate"></i></button>
-             <div className="w-9 h-9 rounded-full bg-slate-200 overflow-hidden ring-2 ring-white shadow-sm">
-               <img src="https://api.dicebear.com/9.x/avataaars/svg?seed=Felix" alt="User" />
-            </div>
           </div>
         </div>
       </nav>
@@ -197,7 +189,7 @@ const App: React.FC = () => {
             {selectedPrompt ? (
               <div className="max-w-7xl mx-auto mt-6">
                 <button onClick={() => setSelectedPrompt(null)} className="mb-8 px-4 py-2 rounded-full bg-white border border-slate-200 hover:text-slate-900 flex items-center gap-2 transition-all shadow-sm text-slate-600 text-sm font-medium">
-                  <i className="fa-solid fa-arrow-left"></i> Voltar
+                  <i className="fa-solid fa-arrow-left"></i> Back
                 </button>
                 
                 <div className="flex flex-col lg:flex-row gap-12 bg-white rounded-[32px] p-6 lg:p-12 shadow-xl border border-slate-100">
@@ -213,7 +205,7 @@ const App: React.FC = () => {
                         <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-sm font-bold text-slate-600">{selectedPrompt.author.charAt(0)}</div>
                         <div className="flex flex-col">
                             <span className="text-sm font-bold text-slate-900">{selectedPrompt.author}</span>
-                            {selectedPrompt.authorUrl && <a href={selectedPrompt.authorUrl} target="_blank" className="text-xs text-slate-500 hover:text-slate-800">Ver Perfil</a>}
+                            {selectedPrompt.authorUrl && <a href={selectedPrompt.authorUrl} target="_blank" className="text-xs text-slate-500 hover:text-slate-800">View Profile</a>}
                         </div>
                       </div>
                       <h2 className="text-4xl font-bold text-slate-900">{selectedPrompt.title}</h2>
@@ -222,11 +214,10 @@ const App: React.FC = () => {
                     <div className="space-y-3 flex-grow bg-slate-50 p-6 rounded-2xl border border-slate-100">
                       <div className="flex items-center justify-between mb-2">
                         <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400">JSON Prompt</h3>
-                        <button onClick={() => { navigator.clipboard.writeText(selectedPrompt.json); alert('Copiado!'); }} className="bg-white border border-slate-200 px-2 py-1 rounded text-xs font-bold shadow-sm">Copy</button>
+                        <button onClick={() => { navigator.clipboard.writeText(selectedPrompt.json); alert('Copied!'); }} className="bg-white border border-slate-200 px-2 py-1 rounded text-xs font-bold shadow-sm">Copy</button>
                       </div>
                       <pre className="code-font text-slate-600 text-sm overflow-x-auto whitespace-pre-wrap">{selectedPrompt.json}</pre>
                     </div>
-                    <button onClick={() => { setView(ViewMode.CREATE); setSelectedPrompt(null); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="w-full bg-brand-gradient text-white px-6 py-4 rounded-2xl font-bold text-lg hover:shadow-xl transition-all">Remixar Prompt</button>
                   </div>
                 </div>
               </div>
@@ -235,7 +226,7 @@ const App: React.FC = () => {
                 <div className="mb-10 max-w-4xl mx-auto pt-6">
                    <div className="relative group">
                     <i className="fa-solid fa-magnifying-glass absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 text-lg"></i>
-                    <input type="text" placeholder="Procurar prompts, estilos ou inspiração..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-white border border-slate-200 rounded-full py-4 pl-14 pr-6 text-slate-900 placeholder-slate-400 text-lg shadow-lg focus:ring-2 focus:ring-slate-500/20 outline-none transition-all" />
+                    <input type="text" placeholder="Search prompts, styles or inspiration..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-white border border-slate-200 rounded-full py-4 pl-14 pr-6 text-slate-900 placeholder-slate-400 text-lg shadow-lg focus:ring-2 focus:ring-slate-500/20 outline-none transition-all" />
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center justify-center gap-3 mb-12">
@@ -252,7 +243,7 @@ const App: React.FC = () => {
                         <PromptCard prompt={prompt} onSelect={(p) => setSelectedPrompt(p)} />
                       </div>
                     )) : (
-                      <div className="col-span-full py-20 text-center text-slate-400 bg-white rounded-3xl border border-slate-100 shadow-sm">Nenhum prompt encontrado.</div>
+                      <div className="col-span-full py-20 text-center text-slate-400 bg-white rounded-3xl border border-slate-100 shadow-sm">No prompts found.</div>
                     )}
                   </div>
                 )}

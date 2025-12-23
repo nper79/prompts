@@ -25,31 +25,31 @@ const SubmissionForm: React.FC<SubmissionFormProps> = ({ initialData, onSubmit, 
   const [bucketErrorMsg, setBucketErrorMsg] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Verificar conexão com o Bucket ao montar o componente
+  // Check bucket connection on mount
   useEffect(() => {
     const checkBucketConnection = async () => {
       if (!supabase) {
         setBucketStatus('error');
-        setBucketErrorMsg('Cliente Supabase não inicializado.');
+        setBucketErrorMsg('Supabase client not initialized.');
         return;
       }
 
       try {
-        // Tenta listar ficheiros para ver se temos acesso (mesmo que esteja vazio, não deve dar erro)
+        // Try to list files to see if we have access
         const { error } = await supabase.storage.from('prompts_images').list('', { limit: 1 });
         
         if (error) {
-          console.error("Erro de conexão ao bucket:", error);
+          console.error("Bucket connection error:", error);
           setBucketStatus('error');
           if (error.message.includes('row-level security')) {
-            setBucketErrorMsg('Erro de Permissões (Policies). O bucket existe mas não tens acesso público.');
+            setBucketErrorMsg('Permission Error (Policies). The bucket exists but public access is denied.');
           } else if (error.message.includes('bucket not found') || error.statusCode === '404') {
-             setBucketErrorMsg("Bucket 'prompts_images' não encontrado no Supabase.");
+             setBucketErrorMsg("Bucket 'prompts_images' not found in Supabase.");
           } else {
-            setBucketErrorMsg(`Erro no Storage: ${error.message}`);
+            setBucketErrorMsg(`Storage Error: ${error.message}`);
           }
         } else {
-          console.log("Conexão ao bucket 'prompts_images' estabelecida com sucesso.");
+          console.log("Connection to 'prompts_images' bucket established.");
           setBucketStatus('ok');
         }
       } catch (err: any) {
@@ -73,7 +73,7 @@ const SubmissionForm: React.FC<SubmissionFormProps> = ({ initialData, onSubmit, 
       }
       return new Blob([u8arr], { type: mime });
     } catch (e) {
-      console.error("Erro na conversão para Blob:", e);
+      console.error("Blob conversion error:", e);
       return null;
     }
   };
@@ -95,31 +95,31 @@ const SubmissionForm: React.FC<SubmissionFormProps> = ({ initialData, onSubmit, 
     e.preventDefault();
     
     if (!formData.imageUrl) { 
-      alert('Por favor, adiciona uma imagem antes de submeter.'); 
+      alert('Please add an image before submitting.'); 
       return; 
     }
 
     if (bucketStatus === 'error' && supabase) {
-      alert(`Atenção: ${bucketErrorMsg}. O upload vai falhar.`);
+      alert(`Warning: ${bucketErrorMsg}. Upload will fail.`);
       return;
     }
     
     setIsProcessing(true);
-    console.log("Iniciando processo de submissão...");
+    console.log("Starting submission...");
 
     let finalImageUrl = formData.imageUrl;
 
-    // Se tivermos Supabase e a imagem for um DataURL (gerada agora ou carregada localmente)
+    // If Supabase exists and image is a DataURL
     if (supabase && formData.imageUrl.startsWith('data:')) {
       try {
-        console.log("Detectado Supabase. A tentar upload para o Storage...");
+        console.log("Supabase detected. Attempting upload to Storage...");
         
         const fileName = `prompt-${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
         const blob = dataURLtoBlob(formData.imageUrl);
 
-        if (!blob) throw new Error("Falha ao preparar o ficheiro da imagem.");
+        if (!blob) throw new Error("Failed to prepare image file.");
 
-        // Upload para o Bucket
+        // Upload to Bucket
         const { data, error: uploadError } = await supabase.storage
           .from('prompts_images')
           .upload(fileName, blob, {
@@ -129,29 +129,29 @@ const SubmissionForm: React.FC<SubmissionFormProps> = ({ initialData, onSubmit, 
           });
 
         if (uploadError) {
-          console.error("Erro detalhado do Supabase Storage:", uploadError);
-          throw new Error(`Erro no Storage: ${uploadError.message}`);
+          console.error("Supabase Storage Error:", uploadError);
+          throw new Error(`Storage Error: ${uploadError.message}`);
         }
 
-        console.log("Upload bem sucedido!", data);
+        console.log("Upload successful!", data);
 
-        // Obter URL Público
+        // Get Public URL
         const { data: { publicUrl } } = supabase.storage
           .from('prompts_images')
           .getPublicUrl(fileName);
         
-        console.log("URL Público gerado:", publicUrl);
+        console.log("Generated Public URL:", publicUrl);
         finalImageUrl = publicUrl;
       } catch (err: any) {
-        alert(err.message || "Erro desconhecido ao enviar imagem.");
+        alert(err.message || "Unknown error uploading image.");
         setIsProcessing(false);
         return;
       }
     } else if (!supabase) {
-      console.warn("Supabase não configurado. A usar modo Local (Base64).");
+      console.warn("Supabase not configured. Using Local Mode (Base64).");
     }
 
-    // Enviar dados finais (com o link do bucket) para a base de dados
+    // Submit final data
     onSubmit({ ...formData, imageUrl: finalImageUrl });
     setIsProcessing(false);
   };
@@ -160,7 +160,7 @@ const SubmissionForm: React.FC<SubmissionFormProps> = ({ initialData, onSubmit, 
     <div className="max-w-4xl mx-auto px-6 py-12">
       <div className="flex items-center justify-between mb-8 border-b border-slate-100 pb-6">
         <div>
-          <h2 className="text-3xl font-bold text-slate-900">Finalizar Publicação</h2>
+          <h2 className="text-3xl font-bold text-slate-900">Finalize Submission</h2>
           {supabase && (
             <div className="flex items-center gap-2 mt-2">
               <span className={`w-2.5 h-2.5 rounded-full ${
@@ -170,14 +170,14 @@ const SubmissionForm: React.FC<SubmissionFormProps> = ({ initialData, onSubmit, 
               <span className={`text-xs font-bold ${
                 bucketStatus === 'error' ? 'text-red-600' : 'text-slate-500'
               }`}>
-                {bucketStatus === 'checking' ? 'A verificar Storage...' : 
-                 bucketStatus === 'ok' ? 'Storage Conectado: prompts_images' : 
+                {bucketStatus === 'checking' ? 'Checking Storage...' : 
+                 bucketStatus === 'ok' ? 'Storage Connected: prompts_images' : 
                  bucketErrorMsg}
               </span>
             </div>
           )}
         </div>
-        <button onClick={onCancel} className="text-slate-500 hover:text-slate-900 font-medium">Cancelar</button>
+        <button onClick={onCancel} className="text-slate-500 hover:text-slate-900 font-medium">Cancel</button>
       </div>
 
       <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-12">
@@ -193,7 +193,7 @@ const SubmissionForm: React.FC<SubmissionFormProps> = ({ initialData, onSubmit, 
             ) : (
               <div className="text-center p-6 text-slate-400">
                 <i className="fa-solid fa-image text-4xl mb-2"></i>
-                <p className="text-sm font-bold">Clica para carregar</p>
+                <p className="text-sm font-bold">Click to upload</p>
               </div>
             )}
             <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
@@ -201,7 +201,7 @@ const SubmissionForm: React.FC<SubmissionFormProps> = ({ initialData, onSubmit, 
 
           <div className="space-y-4">
             <input 
-              type="text" placeholder="Título da Obra" required
+              type="text" placeholder="Title of Work" required
               value={formData.title} onChange={e => setFormData(p => ({...p, title: e.target.value}))}
               className="w-full border border-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-slate-500/20 outline-none shadow-sm"
             />
@@ -224,8 +224,8 @@ const SubmissionForm: React.FC<SubmissionFormProps> = ({ initialData, onSubmit, 
           </div>
           
           <div className="grid grid-cols-2 gap-4">
-             <input type="text" placeholder="Teu Nome" required value={formData.author} onChange={e => setFormData(p => ({...p, author: e.target.value}))} className="border border-slate-200 rounded-xl px-4 py-3 outline-none shadow-sm" />
-             <input type="url" placeholder="Link (X, Portfolio)" value={formData.authorUrl} onChange={e => setFormData(p => ({...p, authorUrl: e.target.value}))} className="border border-slate-200 rounded-xl px-4 py-3 outline-none shadow-sm" />
+             <input type="text" placeholder="Your Name" required value={formData.author} onChange={e => setFormData(p => ({...p, author: e.target.value}))} className="border border-slate-200 rounded-xl px-4 py-3 outline-none shadow-sm" />
+             <input type="url" placeholder="Social Link (X, Portfolio)" value={formData.authorUrl} onChange={e => setFormData(p => ({...p, authorUrl: e.target.value}))} className="border border-slate-200 rounded-xl px-4 py-3 outline-none shadow-sm" />
           </div>
 
           <button 
@@ -233,7 +233,7 @@ const SubmissionForm: React.FC<SubmissionFormProps> = ({ initialData, onSubmit, 
             disabled={isProcessing || (!!supabase && bucketStatus === 'error')}
             className={`w-full bg-brand-gradient text-white py-4 rounded-full font-bold text-lg hover:shadow-xl transition-all ${isProcessing || (!!supabase && bucketStatus === 'error') ? 'opacity-50 grayscale cursor-not-allowed' : 'active:scale-95'}`}
           >
-            {isProcessing ? 'A Enviar para a Cloud...' : 'Submeter para o Diretório'}
+            {isProcessing ? 'Uploading to Cloud...' : 'Submit to Directory'}
           </button>
         </div>
       </form>
