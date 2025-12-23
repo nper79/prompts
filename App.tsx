@@ -22,7 +22,12 @@ const App: React.FC = () => {
   // Handle URL Routing and Query Params on Mount
   useEffect(() => {
     const handleRouting = () => {
-      const path = window.location.pathname;
+      // Normalize path by removing trailing slash (unless it is just '/')
+      let path = window.location.pathname;
+      if (path.length > 1 && path.endsWith('/')) {
+        path = path.slice(0, -1);
+      }
+      
       const params = new URLSearchParams(window.location.search);
 
       // Extract query params for pre-filling (e.g., from extension/twitter)
@@ -36,7 +41,7 @@ const App: React.FC = () => {
 
       const hasQueryData = Object.keys(queryData).length > 0;
 
-      if (path === '/submit' || path.includes('submit')) {
+      if (path === '/submit') {
         setView(ViewMode.SUBMIT);
         if (hasQueryData) {
           setPrefilledSubmission(queryData);
