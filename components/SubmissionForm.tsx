@@ -25,7 +25,7 @@ const SubmissionForm: React.FC<SubmissionFormProps> = ({ initialData, onSubmit, 
   const [bucketErrorMsg, setBucketErrorMsg] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Check bucket connection on mount
+  // Check bucket connection on mount (Silent Check)
   useEffect(() => {
     const checkBucketConnection = async () => {
       if (!supabase) {
@@ -49,7 +49,7 @@ const SubmissionForm: React.FC<SubmissionFormProps> = ({ initialData, onSubmit, 
             setBucketErrorMsg(`Storage Error: ${error.message}`);
           }
         } else {
-          console.log("Connection to 'prompts_images' bucket established.");
+          // Connected successfully
           setBucketStatus('ok');
         }
       } catch (err: any) {
@@ -100,6 +100,7 @@ const SubmissionForm: React.FC<SubmissionFormProps> = ({ initialData, onSubmit, 
     }
 
     if (bucketStatus === 'error' && supabase) {
+      // Only alert on submit if there is a critical error
       alert(`Warning: ${bucketErrorMsg}. Upload will fail.`);
       return;
     }
@@ -161,21 +162,7 @@ const SubmissionForm: React.FC<SubmissionFormProps> = ({ initialData, onSubmit, 
       <div className="flex items-center justify-between mb-8 border-b border-slate-100 pb-6">
         <div>
           <h2 className="text-3xl font-bold text-slate-900">Finalize Submission</h2>
-          {supabase && (
-            <div className="flex items-center gap-2 mt-2">
-              <span className={`w-2.5 h-2.5 rounded-full ${
-                bucketStatus === 'checking' ? 'bg-yellow-400 animate-pulse' :
-                bucketStatus === 'ok' ? 'bg-emerald-500' : 'bg-red-500'
-              }`}></span>
-              <span className={`text-xs font-bold ${
-                bucketStatus === 'error' ? 'text-red-600' : 'text-slate-500'
-              }`}>
-                {bucketStatus === 'checking' ? 'Checking Storage...' : 
-                 bucketStatus === 'ok' ? 'Storage Connected: prompts_images' : 
-                 bucketErrorMsg}
-              </span>
-            </div>
-          )}
+          {/* Status indicators removed as requested */}
         </div>
         <button onClick={onCancel} className="text-slate-500 hover:text-slate-900 font-medium">Cancel</button>
       </div>

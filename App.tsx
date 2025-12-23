@@ -19,6 +19,62 @@ const App: React.FC = () => {
   const [showSuccessToast, setShowSuccessToast] = useState(false);
   const [dbStatus, setDbStatus] = useState<'connected' | 'local' | 'error'>('local');
 
+  // Handle URL Routing and Query Params on Mount
+  useEffect(() => {
+    const handleRouting = () => {
+      const path = window.location.pathname;
+      const params = new URLSearchParams(window.location.search);
+
+      // Extract query params for pre-filling (e.g., from extension/twitter)
+      const queryData: Partial<PromptItem> = {};
+      if (params.get('title')) queryData.title = params.get('title') || '';
+      if (params.get('json')) queryData.json = params.get('json') || '';
+      if (params.get('imageUrl')) queryData.imageUrl = params.get('imageUrl') || '';
+      if (params.get('author')) queryData.author = params.get('author') || '';
+      if (params.get('authorUrl')) queryData.authorUrl = params.get('authorUrl') || '';
+      if (params.get('category')) queryData.category = params.get('category') || '';
+
+      const hasQueryData = Object.keys(queryData).length > 0;
+
+      if (path === '/submit' || path.includes('submit')) {
+        setView(ViewMode.SUBMIT);
+        if (hasQueryData) {
+          setPrefilledSubmission(queryData);
+        }
+      } else if (path === '/create') {
+        setView(ViewMode.CREATE);
+      } else {
+        setView(ViewMode.EXPLORE);
+      }
+    };
+
+    handleRouting();
+
+    // Listen for browser back/forward buttons
+    window.addEventListener('popstate', handleRouting);
+    return () => window.removeEventListener('popstate', handleRouting);
+  }, []);
+
+  // Update URL without reloading when changing views internally
+  const navigateTo = (newView: ViewMode, data?: Partial<PromptItem>) => {
+    let path = '/';
+    if (newView === ViewMode.SUBMIT) path = '/submit';
+    else if (newView === ViewMode.CREATE) path = '/create';
+
+    window.history.pushState({}, '', path);
+    setView(newView);
+    
+    if (data) {
+      setPrefilledSubmission(data);
+    } else {
+      // Clear prefilled data if navigating manually unless passing data
+      if (newView !== ViewMode.SUBMIT) setPrefilledSubmission(null);
+    }
+    
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (newView === ViewMode.EXPLORE) setSelectedPrompt(null);
+  };
+
   // Load Data (Supabase or Local)
   useEffect(() => {
     const loadPrompts = async () => {
@@ -81,9 +137,7 @@ const App: React.FC = () => {
   }, [prompts, selectedCategory, searchQuery]);
 
   const handlePostPrompt = (imageUrl: string, json: string) => {
-    setPrefilledSubmission({ imageUrl, json });
-    setView(ViewMode.SUBMIT);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    navigateTo(ViewMode.SUBMIT, { imageUrl, json });
   };
 
   const handleAddPrompt = async (newPromptData: Omit<PromptItem, 'id' | 'createdAt'>) => {
@@ -142,10 +196,9 @@ const App: React.FC = () => {
     setSelectedCategory('All');
     setSearchQuery('');
     setSelectedPrompt(null);
-    setView(ViewMode.EXPLORE);
+    navigateTo(ViewMode.EXPLORE);
     setShowSuccessToast(true);
     setIsLoading(false);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
     
     setTimeout(() => setShowSuccessToast(false), 3000);
   };
@@ -169,7 +222,7 @@ const App: React.FC = () => {
 
       <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md px-6 py-4 border-b border-gray-200/50">
         <div className="max-w-[1600px] mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2 cursor-pointer group" onClick={() => { setView(ViewMode.EXPLORE); setSelectedPrompt(null); }}>
+          <div className="flex items-center gap-2 cursor-pointer group" onClick={() => navigateTo(ViewMode.EXPLORE)}>
              <div className="bg-brand-gradient text-white w-9 h-9 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform">
               <span className="font-bold text-lg font-mono">J</span>
             </div>
@@ -177,7 +230,7 @@ const App: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-4">
-             <button onClick={() => { setView(ViewMode.SUBMIT); setSelectedPrompt(null); }} className="hidden sm:block bg-brand-gradient text-white px-6 py-2.5 rounded-full font-bold text-sm shadow-lg hover:scale-105 transition-all">Submit</button>
+             <button onClick={() => navigateTo(ViewMode.SUBMIT)} className="hidden sm:block bg-brand-gradient text-white px-6 py-2.5 rounded-full font-bold text-sm shadow-lg hover:scale-105 transition-all">Submit</button>
              <button onClick={resetStorage} className="w-10 h-10 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors"><i className="fa-solid fa-arrows-rotate"></i></button>
           </div>
         </div>
@@ -252,7 +305,7 @@ const App: React.FC = () => {
           </div>
         )}
         {view === ViewMode.CREATE && <div className="animate-fade-in"><Creator onPostToDirectory={handlePostPrompt} /></div>}
-        {view === ViewMode.SUBMIT && <div className="animate-fade-in"><SubmissionForm initialData={prefilledSubmission || {}} onSubmit={handleAddPrompt} onCancel={() => { setView(ViewMode.EXPLORE); setPrefilledSubmission(null); }} /></div>}
+        {view === ViewMode.SUBMIT && <div className="animate-fade-in"><SubmissionForm initialData={prefilledSubmission || {}} onSubmit={handleAddPrompt} onCancel={() => navigateTo(ViewMode.EXPLORE)} /></div>}
       </main>
 
       <footer className="px-6 py-8 border-t border-slate-200 bg-white/50 backdrop-blur-sm">
