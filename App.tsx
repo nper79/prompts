@@ -251,13 +251,13 @@ const App: React.FC = () => {
                 </button>
                 
                 <div className="flex flex-col lg:flex-row gap-12 bg-white rounded-[32px] p-6 lg:p-12 shadow-xl border border-slate-100">
-                  <div className="lg:w-2/3">
-                    <div className="rounded-2xl overflow-hidden shadow-sm bg-slate-50">
-                      <img src={selectedPrompt.imageUrl} className="w-full h-auto object-contain max-h-[85vh]" alt={selectedPrompt.title} />
+                  <div className="lg:w-1/2 mx-auto">
+                    <div className="rounded-2xl overflow-hidden shadow-sm bg-slate-50 flex items-center justify-center">
+                      <img src={selectedPrompt.imageUrl} className="w-full h-auto object-contain max-h-[60vh]" alt={selectedPrompt.title} />
                     </div>
                   </div>
                   
-                  <div className="lg:w-1/3 space-y-8 flex flex-col">
+                  <div className="lg:w-1/2 space-y-8 flex flex-col">
                     <div>
                        <div className="flex items-center gap-3 mb-4">
                         <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-sm font-bold text-slate-600">{selectedPrompt.author.charAt(0)}</div>
@@ -295,9 +295,9 @@ const App: React.FC = () => {
                 {isLoading ? (
                   <div className="flex justify-center py-20"><i className="fa-solid fa-circle-notch fa-spin text-4xl text-slate-300"></i></div>
                 ) : (
-                  <div className="columns-1 sm:columns-2 lg:columns-3 gap-6 space-y-6">
+                  <div className="columns-2 sm:columns-3 lg:columns-4 xl:columns-5 gap-4 space-y-4">
                     {filteredPrompts.length > 0 ? filteredPrompts.map(prompt => (
-                      <div key={prompt.id} className="break-inside-avoid mb-6">
+                      <div key={prompt.id} className="break-inside-avoid mb-4">
                         <PromptCard prompt={prompt} onSelect={(p) => setSelectedPrompt(p)} />
                       </div>
                     )) : (
