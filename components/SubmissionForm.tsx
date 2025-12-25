@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { PromptItem } from '../types';
-import { CATEGORIES } from '../constants';
+import { geminiService } from '../services/geminiService';
 import { supabase } from '../supabaseClient';
 
 interface SubmissionFormProps {
@@ -15,50 +15,27 @@ const SubmissionForm: React.FC<SubmissionFormProps> = ({ initialData, onSubmit, 
     title: initialData?.title || '',
     author: initialData?.author || '',
     authorUrl: initialData?.authorUrl || '',
-    category: initialData?.category || CATEGORIES[1],
-    json: initialData?.json || '{\n  "style": "cinematic"\n}',
+    tags: (initialData as any)?.tags || [] as string[],
+    json: initialData?.json || '{\n  "subject": "Cyberpunk runner",\n  "lighting": "neon red"\n}',
     imageUrl: initialData?.imageUrl || ''
   });
 
   const [isProcessing, setIsProcessing] = useState(false);
-  const [bucketStatus, setBucketStatus] = useState<'checking' | 'ok' | 'error'>('checking');
-  const [bucketErrorMsg, setBucketErrorMsg] = useState<string>('');
+  const [isTagging, setIsTagging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Check bucket connection on mount (Silent Check)
   useEffect(() => {
-    const checkBucketConnection = async () => {
-      if (!supabase) {
-        setBucketStatus('error');
-        setBucketErrorMsg('Supabase client not initialized.');
-        return;
-      }
-
-      try {
-        // Try to list files to see if we have access
-        const { error } = await supabase.storage.from('prompts_images').list('', { limit: 1 });
-        
-        if (error) {
-          console.error("Bucket connection error:", error);
-          setBucketStatus('error');
-          if (error.message.includes('row-level security')) {
-            setBucketErrorMsg('Permission Error (Policies). The bucket exists but public access is denied.');
-          } else if (error.message.includes('bucket not found') || error.statusCode === '404') {
-             setBucketErrorMsg("Bucket 'prompts_images' not found in Supabase.");
-          } else {
-            setBucketErrorMsg(`Storage Error: ${error.message}`);
-          }
-        } else {
-          // Connected successfully
-          setBucketStatus('ok');
-        }
-      } catch (err: any) {
-        setBucketStatus('error');
-        setBucketErrorMsg(err.message);
+    const triggerTagging = async () => {
+      if (formData.json.length > 20 && formData.tags.length === 0) {
+        setIsTagging(true);
+        try {
+          const tags = await geminiService.generateTags(formData.json);
+          setFormData(prev => ({ ...prev, tags }));
+        } catch (e) {}
+        setIsTagging(false);
       }
     };
-
-    checkBucketConnection();
+    triggerTagging();
   }, []);
 
   const dataURLtoBlob = (dataurl: string) => {
@@ -68,14 +45,9 @@ const SubmissionForm: React.FC<SubmissionFormProps> = ({ initialData, onSubmit, 
       const bstr = atob(arr[1]);
       let n = bstr.length;
       const u8arr = new Uint8Array(n);
-      while (n--) {
-        u8arr[n] = bstr.charCodeAt(n);
-      }
+      while (n--) u8arr[n] = bstr.charCodeAt(n);
       return new Blob([u8arr], { type: mime });
-    } catch (e) {
-      console.error("Blob conversion error:", e);
-      return null;
-    }
+    } catch (e) { return null; }
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -91,136 +63,122 @@ const SubmissionForm: React.FC<SubmissionFormProps> = ({ initialData, onSubmit, 
     }
   };
 
+  const handleManualTagGenerate = async () => {
+    setIsTagging(true);
+    const tags = await geminiService.generateTags(formData.json);
+    setFormData(prev => ({ ...prev, tags }));
+    setIsTagging(false);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!formData.imageUrl) { 
-      alert('Please add an image before submitting.'); 
-      return; 
-    }
-
-    if (bucketStatus === 'error' && supabase) {
-      // Only alert on submit if there is a critical error
-      alert(`Warning: ${bucketErrorMsg}. Upload will fail.`);
-      return;
-    }
+    if (!formData.imageUrl) { alert('Please upload an image.'); return; }
     
     setIsProcessing(true);
-    console.log("Starting submission...");
-
     let finalImageUrl = formData.imageUrl;
 
-    // If Supabase exists and image is a DataURL
     if (supabase && formData.imageUrl.startsWith('data:')) {
       try {
-        console.log("Supabase detected. Attempting upload to Storage...");
-        
-        const fileName = `prompt-${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
+        const fileName = `prompt-${Date.now()}.jpg`;
         const blob = dataURLtoBlob(formData.imageUrl);
-
-        if (!blob) throw new Error("Failed to prepare image file.");
-
-        // Upload to Bucket
-        const { data, error: uploadError } = await supabase.storage
-          .from('prompts_images')
-          .upload(fileName, blob, {
-            contentType: 'image/jpeg',
-            cacheControl: '3600',
-            upsert: false
-          });
-
-        if (uploadError) {
-          console.error("Supabase Storage Error:", uploadError);
-          throw new Error(`Storage Error: ${uploadError.message}`);
+        if (blob) {
+          const { error } = await supabase.storage.from('prompts_images').upload(fileName, blob);
+          if (!error) {
+            const { data: { publicUrl } } = supabase.storage.from('prompts_images').getPublicUrl(fileName);
+            finalImageUrl = publicUrl;
+          }
         }
-
-        console.log("Upload successful!", data);
-
-        // Get Public URL
-        const { data: { publicUrl } } = supabase.storage
-          .from('prompts_images')
-          .getPublicUrl(fileName);
-        
-        console.log("Generated Public URL:", publicUrl);
-        finalImageUrl = publicUrl;
-      } catch (err: any) {
-        alert(err.message || "Unknown error uploading image.");
-        setIsProcessing(false);
-        return;
-      }
-    } else if (!supabase) {
-      console.warn("Supabase not configured. Using Local Mode (Base64).");
+      } catch (err) {}
     }
 
-    // Submit final data
     onSubmit({ ...formData, imageUrl: finalImageUrl });
     setIsProcessing(false);
   };
 
   return (
-    <div className="max-w-4xl mx-auto px-6 py-12">
-      <div className="flex items-center justify-between mb-8 border-b border-slate-100 pb-6">
+    <div className="max-w-5xl mx-auto px-6 py-12 animate-fade-in">
+      <div className="mb-10 flex items-center justify-between">
         <div>
-          <h2 className="text-3xl font-bold text-slate-900">Finalize Submission</h2>
-          {/* Status indicators removed as requested */}
+          <h2 className="text-3xl font-bold text-slate-900">Publish to Directory</h2>
+          <p className="text-slate-500 mt-1">Share your structured prompt with the community.</p>
         </div>
-        <button onClick={onCancel} className="text-slate-500 hover:text-slate-900 font-medium">Cancel</button>
+        <button onClick={onCancel} className="text-sm font-bold text-slate-400 hover:text-slate-900 transition-colors">Discard</button>
       </div>
 
-      <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-12">
-        <div className="space-y-6">
+      <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-12 gap-12">
+        <div className="lg:col-span-5 space-y-6">
           <div 
             onClick={() => !isProcessing && fileInputRef.current?.click()}
-            className={`aspect-square rounded-3xl border-2 border-dashed transition-all cursor-pointer overflow-hidden flex flex-col items-center justify-center gap-4 relative group ${
-              formData.imageUrl ? 'border-slate-300 bg-slate-50' : 'border-slate-200 bg-slate-50'
-            }`}
+            className="aspect-square rounded-[32px] border-2 border-dashed border-slate-200 bg-white cursor-pointer overflow-hidden flex flex-col items-center justify-center hover:border-slate-400 hover:bg-slate-50 transition-all group relative"
           >
             {formData.imageUrl ? (
-              <img src={formData.imageUrl} className="w-full h-full object-contain p-4" alt="Preview" />
+              <img src={formData.imageUrl} className="w-full h-full object-cover" alt="Preview" />
             ) : (
-              <div className="text-center p-6 text-slate-400">
-                <i className="fa-solid fa-image text-4xl mb-2"></i>
-                <p className="text-sm font-bold">Click to upload</p>
+              <div className="text-center p-8 space-y-4">
+                <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-300">
+                  <i className="fa-solid fa-cloud-arrow-up text-2xl"></i>
+                </div>
+                <p className="text-sm font-bold text-slate-400">Upload Final Image</p>
               </div>
             )}
             <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
           </div>
 
-          <div className="space-y-4">
-            <input 
-              type="text" placeholder="Title of Work" required
-              value={formData.title} onChange={e => setFormData(p => ({...p, title: e.target.value}))}
-              className="w-full border border-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-slate-500/20 outline-none shadow-sm"
-            />
-            <select 
-              value={formData.category} onChange={e => setFormData(p => ({...p, category: e.target.value}))}
-              className="w-full border border-slate-200 rounded-xl px-4 py-3 shadow-sm bg-white"
-            >
-              {CATEGORIES.filter(c => c !== 'All').map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
+          <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100 space-y-4">
+             <div className="flex justify-between items-center">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">AI Meta-Tags</span>
+                <button type="button" onClick={handleManualTagGenerate} disabled={isTagging} className="text-[10px] font-bold text-slate-500 hover:text-slate-900 transition-colors underline">Refresh</button>
+             </div>
+             <div className="flex flex-wrap gap-2">
+               {isTagging ? (
+                 <span className="text-xs font-medium animate-pulse text-slate-400">Gemini is tagging...</span>
+               ) : formData.tags.length > 0 ? (
+                 formData.tags.map(tag => (
+                   <span key={tag} className="px-2.5 py-1 bg-white border border-slate-200 text-slate-600 text-[10px] font-bold rounded-lg uppercase">#{tag}</span>
+                 ))
+               ) : (
+                 <span className="text-xs text-slate-300 italic">Tags will appear automatically</span>
+               )}
+             </div>
           </div>
         </div>
 
-        <div className="space-y-6">
-          <div className="h-[300px] border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-             <textarea
-               required value={formData.json} onChange={e => setFormData(p => ({...p, json: e.target.value}))}
-               className="w-full h-full p-4 code-font text-sm bg-slate-50/50 outline-none resize-none"
-               placeholder='{"prompt": "..."}'
-             />
-          </div>
-          
-          <div className="grid grid-cols-2 gap-4">
-             <input type="text" placeholder="Your Name" required value={formData.author} onChange={e => setFormData(p => ({...p, author: e.target.value}))} className="border border-slate-200 rounded-xl px-4 py-3 outline-none shadow-sm" />
-             <input type="url" placeholder="Social Link (X, Portfolio)" value={formData.authorUrl} onChange={e => setFormData(p => ({...p, authorUrl: e.target.value}))} className="border border-slate-200 rounded-xl px-4 py-3 outline-none shadow-sm" />
+        <div className="lg:col-span-7 space-y-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <label className="text-xs font-bold uppercase tracking-widest text-slate-400 ml-1">Title</label>
+              <input 
+                type="text" placeholder="Creative Subject Name" required
+                value={formData.title} onChange={e => setFormData(p => ({...p, title: e.target.value}))}
+                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 font-medium outline-none focus:ring-2 focus:ring-slate-500/10 focus:border-slate-400 transition-all"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold uppercase tracking-widest text-slate-400 ml-1">Creator</label>
+              <input 
+                type="text" placeholder="Your handle" required
+                value={formData.author} onChange={e => setFormData(p => ({...p, author: e.target.value}))}
+                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 font-medium outline-none focus:ring-2 focus:ring-slate-500/10 focus:border-slate-400 transition-all"
+              />
+            </div>
           </div>
 
-          <button 
-            type="submit" 
-            disabled={isProcessing || (!!supabase && bucketStatus === 'error')}
-            className={`w-full bg-brand-gradient text-white py-4 rounded-full font-bold text-lg hover:shadow-xl transition-all ${isProcessing || (!!supabase && bucketStatus === 'error') ? 'opacity-50 grayscale cursor-not-allowed' : 'active:scale-95'}`}
+          <div className="space-y-2">
+            <label className="text-xs font-bold uppercase tracking-widest text-slate-400 ml-1">Structured JSON Data</label>
+            <textarea
+              required
+              value={formData.json}
+              onChange={e => setFormData(p => ({...p, json: e.target.value}))}
+              className="w-full h-64 border border-slate-200 rounded-2xl p-6 code-font text-sm outline-none bg-white focus:ring-2 focus:ring-slate-500/10 focus:border-slate-400 transition-all resize-none"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={isProcessing}
+            className="w-full bg-brand-gradient text-white py-4 rounded-xl font-bold text-lg shadow-xl hover:shadow-slate-500/20 active:scale-[0.99] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isProcessing ? 'Uploading to Cloud...' : 'Submit to Directory'}
+            {isProcessing ? 'Processing...' : 'Publish Prompt'}
           </button>
         </div>
       </form>

@@ -2,7 +2,7 @@
 export interface PromptItem {
   id: string | number;
   title: string;
-  category: string;
+  tags: string[]; // Changed from category: string
   json: string;
   imageUrl: string;
   author: string;

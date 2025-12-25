@@ -8,35 +8,43 @@ export class GeminiService {
     this.ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
   }
 
+  async generateTags(jsonString: string): Promise<string[]> {
+    try {
+      const response = await this.ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: `Analyze this image generation JSON prompt and return exactly 5 descriptive tags (single words or short phrases) representing the style, subject, and mood. Return ONLY the tags separated by commas.
+        Prompt JSON: ${jsonString}`,
+      });
+      
+      const text = response.text || "";
+      return text.split(',')
+        .map(tag => tag.trim().toLowerCase())
+        .filter(tag => tag.length > 0)
+        .slice(0, 5);
+    } catch (error) {
+      console.error("Tag Generation Error:", error);
+      return ["ai-generated", "json-prompt"];
+    }
+  }
+
   async generateFromJSON(jsonString: string): Promise<string> {
     try {
-      // Parse the JSON to ensure it's valid and extract the prompt
       let promptText = "";
       try {
         const parsed = JSON.parse(jsonString);
-        // Convert JSON keys/values into a descriptive natural language prompt
         promptText = Object.entries(parsed)
           .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(", ") : value}`)
           .join(". ");
       } catch (e) {
-        // If not valid JSON, use the raw string
         promptText = jsonString;
       }
 
       const response = await this.ai.models.generateContent({
         model: 'gemini-2.5-flash-image',
         contents: {
-          parts: [
-            {
-              text: `Generate a high-quality visual based on these specifications: ${promptText}`,
-            },
-          ],
+          parts: [{ text: `Generate a high-quality visual based on these specifications: ${promptText}` }],
         },
-        config: {
-          imageConfig: {
-            aspectRatio: "1:1"
-          }
-        }
+        config: { imageConfig: { aspectRatio: "1:1" } }
       });
 
       let imageUrl = "";
@@ -47,7 +55,7 @@ export class GeminiService {
         }
       }
 
-      if (!imageUrl) throw new Error("No image generated in the response");
+      if (!imageUrl) throw new Error("No image generated");
       return imageUrl;
     } catch (error) {
       console.error("Gemini Image Generation Error:", error);
