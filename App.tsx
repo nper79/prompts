@@ -178,18 +178,18 @@ const App: React.FC = () => {
       {/* Lightbox Modal */}
       {isLightboxOpen && selectedPrompt && (
         <div 
-          className="fixed inset-0 z-[100] bg-slate-900/90 backdrop-blur-sm flex items-center justify-center p-4 cursor-zoom-out animate-fade-in"
+          className="fixed inset-0 z-[100] bg-slate-900/95 backdrop-blur-md flex items-center justify-center p-4 md:p-12 cursor-zoom-out animate-fade-in"
           onClick={() => setIsLightboxOpen(false)}
         >
           <button 
-            className="absolute top-6 right-6 text-white text-3xl hover:scale-110 transition-transform"
+            className="absolute top-6 right-6 text-white/50 hover:text-white text-3xl transition-all"
             onClick={() => setIsLightboxOpen(false)}
           >
             <i className="fa-solid fa-xmark"></i>
           </button>
           <img 
             src={selectedPrompt.imageUrl} 
-            className="max-w-full max-h-full object-contain rounded-lg shadow-2xl" 
+            className="max-w-full max-h-full object-contain rounded-lg shadow-2xl transition-transform" 
             alt={selectedPrompt.title}
             onClick={(e) => e.stopPropagation()}
           />
@@ -220,17 +220,22 @@ const App: React.FC = () => {
                   <i className="fa-solid fa-arrow-left"></i> Back
                 </button>
                 <div className="flex flex-col lg:flex-row gap-12 bg-white rounded-[32px] p-6 lg:p-12 shadow-xl border border-slate-100">
-                  <div className="lg:w-1/2 flex items-center justify-center bg-slate-50 rounded-2xl overflow-hidden shadow-sm relative group">
+                  {/* Image Column - No frame, sticky and aligned to top */}
+                  <div className="lg:w-1/2 self-start sticky top-24 flex items-start justify-center relative group">
                     <img 
                       src={selectedPrompt.imageUrl} 
-                      className="w-full h-auto object-contain max-h-[60vh] cursor-zoom-in" 
+                      className="w-full h-auto object-contain rounded-2xl cursor-zoom-in hover:brightness-95 transition-all max-h-[85vh]" 
                       alt={selectedPrompt.title} 
                       onClick={() => setIsLightboxOpen(true)}
                     />
-                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors pointer-events-none flex items-center justify-center">
-                      <i className="fa-solid fa-magnifying-glass-plus text-white text-4xl opacity-0 group-hover:opacity-100 transition-opacity"></i>
+                    <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                      <div className="bg-black/60 backdrop-blur px-3 py-1.5 rounded-full text-[10px] font-black uppercase text-white shadow-lg border border-white/20">
+                        <i className="fa-solid fa-expand mr-1.5"></i> Click to Expand
+                      </div>
                     </div>
                   </div>
+
+                  {/* Details Column */}
                   <div className="lg:w-1/2 space-y-8">
                     <div className="space-y-4">
                       <div className="flex flex-wrap gap-2">
@@ -238,18 +243,29 @@ const App: React.FC = () => {
                            <span key={t} className="px-3 py-1 bg-slate-100 text-slate-600 border border-slate-200 rounded-full text-[10px] font-bold uppercase tracking-wider">#{t}</span>
                          ))}
                       </div>
-                      <h2 className="text-4xl font-bold text-slate-900 leading-tight">{selectedPrompt.title}</h2>
+                      <h2 className="text-5xl font-bold text-slate-900 leading-tight tracking-tight">{selectedPrompt.title}</h2>
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-500">{selectedPrompt.author.charAt(0)}</div>
-                        <span className="text-sm font-bold text-slate-600">{selectedPrompt.author}</span>
+                        <div className="w-10 h-10 rounded-full bg-brand-gradient text-white flex items-center justify-center text-sm font-bold shadow-md">{selectedPrompt.author.charAt(0).toUpperCase()}</div>
+                        <div className="flex flex-col">
+                          <span className="text-sm font-bold text-slate-900">{selectedPrompt.author}</span>
+                          <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">PROMPT ARCHITECT</span>
+                        </div>
                       </div>
                     </div>
-                    <div className="space-y-3 bg-slate-50 p-6 rounded-2xl border border-slate-100">
-                      <div className="flex items-center justify-between mb-2">
-                        <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400">JSON Prompt</h3>
-                        <button onClick={() => { navigator.clipboard.writeText(selectedPrompt.json); alert('Copied!'); }} className="bg-white border border-slate-200 px-3 py-1 rounded-lg text-xs font-bold shadow-sm hover:border-slate-400 transition-all">Copy</button>
+                    
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400">JSON Blueprint</h3>
+                        <button 
+                          onClick={() => { navigator.clipboard.writeText(selectedPrompt.json); alert('JSON Copied!'); }} 
+                          className="bg-white border border-slate-200 hover:border-slate-400 px-4 py-1.5 rounded-full text-xs font-bold shadow-sm transition-all flex items-center gap-2"
+                        >
+                          <i className="fa-regular fa-copy"></i> Copy JSON
+                        </button>
                       </div>
-                      <pre className="code-font text-slate-600 text-sm overflow-x-auto whitespace-pre-wrap">{selectedPrompt.json}</pre>
+                      <div className="bg-slate-900 rounded-[24px] p-8 shadow-inner border border-slate-800">
+                        <pre className="code-font text-slate-300 text-sm overflow-x-auto whitespace-pre-wrap leading-relaxed">{selectedPrompt.json}</pre>
+                      </div>
                     </div>
                   </div>
                 </div>
